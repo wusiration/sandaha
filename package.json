@@ -1,0 +1,22 @@
+{
+  "name": "3dh_project",
+  "version": "1.0.0",
+  "description": "一个可直接在浏览器中运行的**三打哈**扑克游戏，支持 1 名玩家与 3 个机器人 AI 对战。",
+  "main": "index.js",
+  "scripts": {
+    "copy": "node copy-web.js",
+    "presync": "npm run copy",
+    "sync": "cap sync",
+    "open:android": "cap open android",
+    "build:apk": "npm run sync && cap open android"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@capacitor/android": "^8.4.1",
+    "@capacitor/cli": "^8.4.1",
+    "@capacitor/core": "^8.4.1"
+  }
+}
