@@ -893,6 +893,7 @@ let state = {};
 function initMemory(){
   return {
     playedCards: new Set(),     // 已出过的所有牌 id
+    playedByPlayer: [[],[],[],[]], // 每位玩家出过的牌 {card}
     playedTrump: [],            // 已出过的主牌 {card, playerIndex}
     voids: [                    // 每位玩家是否缺某门副牌
       {s:false,h:false,c:false,d:false},
@@ -907,6 +908,7 @@ function recordPlay(idx, cards){
   const mem = state.memory;
   for(const c of cards){
     mem.playedCards.add(c.id);
+    mem.playedByPlayer[idx].push(c);
     if(isTrump(c, state.trumpSuit)) mem.playedTrump.push({card:c, playerIndex:idx});
   }
 }
@@ -983,6 +985,52 @@ function remainingHigherCards(c){
     if(orv > rv) count++;
   }
   return count;
+}
+function remainingTricks(){
+  return TOTAL_TRICKS - state.trickCount;
+}
+function isEndgame(threshold=3){
+  return remainingTricks() <= threshold;
+}
+function remainingPoints(){
+  // 估算剩余牌中还有多少分（不含底牌）
+  let pts=0;
+  for(const c of state.deck){
+    if(state.memory.playedCards.has(c.id)) continue;
+    pts += scoreValue(c);
+  }
+  return pts;
+}
+function estimatedTrumpsLeft(playerIdx){
+  // 粗略估计某玩家还剩多少主牌：总剩余主牌减去已知其他玩家主牌数
+  const mem = state.memory;
+  let knownOther = 0;
+  for(const pt of mem.playedTrump){
+    if(pt.playerIndex !== playerIdx) knownOther++;
+  }
+  return Math.max(0, remainingTrumpCount() - (mem.totalTrumps - mem.playedTrump.length - knownOther - state.players[playerIdx].hand.filter(c=>isTrump(c,state.trumpSuit)).length));
+}
+function partnerStrongInSuit(idx, suit){
+  // 同伴在该花色上是否出过 A/K/对子等强牌
+  const pi = partnerIndex(idx);
+  if(pi==null) return false;
+  for(const c of state.memory.playedByPlayer[pi]){
+    if(c.suit===suit && !isTrump(c,state.trumpSuit) && plainRankValue(c)>=92) return true;
+  }
+  return false;
+}
+function partnerHasPlayedHighInTrick(){
+  // 当前轮中同伴是否已出强牌
+  const lead = state.currentTrick[0];
+  if(!lead) return false;
+  for(const pl of state.currentTrick){
+    const pi = partnerIndex(pl.playerIndex);
+    if(pi!=null && pl.playerIndex===pi && pl.maxRank>=92) return true;
+  }
+  return false;
+}
+function isLastTrick(){
+  return remainingTricks() === 1;
 }
 function initState(){
   return {
@@ -1811,6 +1859,29 @@ function aiChooseLead(idx){
     }
     // avoid leading low singletons unless no choice
     if(type==='single' && max < 80) sc -= 15;
+    // 终局调整
+    if(isEndgame()){
+      const rem = remainingTricks();
+      if(role==='dealer'){
+        // 庄家最后一轮优先出主牌大牌保底
+        if(isLastTrick() && cat==='trump') sc += 30 + max*0.2;
+        // 避免在最后一轮出副牌让对手抠底
+        if(isLastTrick() && cat!=='trump' && !allOpponentsVoid(idx, cat)) sc -= 40;
+        // 剩余主牌不多时，出主逼牌价值降低
+        if(cat==='trump' && remainingTrumpCount() <= rem) sc -= 10;
+      } else {
+        // 闲家最后一轮积极出主牌争取抠底
+        if(isLastTrick() && cat==='trump'){
+          sc += 35;
+          if(type==='pair' || type==='tractor') sc += 25;
+        }
+        // 剩余分牌还很多但轮次不够时，要积极抢分
+        const needed = (state.bid||0) - state.defenderPoints;
+        if(needed > 0 && remainingPoints() <= needed + 10 && cat!=='trump'){
+          sc += (max>=93 ? 15 : 8);
+        }
+      }
+    }
     if(sc>bestScore){ bestScore=sc; best=cand; }
   }
   return best;
@@ -1943,6 +2014,10 @@ function aiChooseFollow(idx, lead){
     } else {
       // 对手在赢墩：尽量赢，否则少送分
       if(wins){
+        // 闲家配合：避免两个闲家连续浪费主牌
+        const partner = partnerIndex(idx);
+        const partnerPlayedTrump = partner!=null && state.currentTrick.some(p=>p.playerIndex===partner && p.category==='trump');
+        if(role==='defender' && partnerPlayedTrump && !isLastPlayer) sc -= 25;
         sc += 200 + (isLastPlayer?50:0) + candPoints * 2;
         sc -= cand.maxRank * 0.4;
         // 用主牌对子/拖拉机赢比较贵，稍微扣分
@@ -1953,6 +2028,31 @@ function aiChooseFollow(idx, lead){
         if(candPoints > 0) sc -= candPoints * 5;
         // 若自己是最后一家且已无法赢，优先出最低牌
         if(isLastPlayer) sc -= 5;
+        // 闲家：如果同伴还没出过牌，自己又不是最后一家，尽量让同伴先消耗主牌
+        const partner = partnerIndex(idx);
+        const partnerPlayed = partner!=null && state.currentTrick.some(p=>p.playerIndex===partner);
+        if(role==='defender' && !isLastPlayer && !partnerPlayed && cand.category==='trump') sc -= 20;
+      }
+    }
+    // 终局强化
+    if(isEndgame()){
+      if(role==='dealer'){
+        if(isLastTrick()){
+          // 最后一轮庄家必须保底
+          if(wins) sc += 80;
+          // 避免垫副牌让对手抠底
+          if(cand.category!=='trump' && cand.category!==leadCat) sc -= 40;
+        }
+      } else {
+        if(isLastTrick()){
+          // 最后一轮闲家争取抠底
+          if(wins && cand.category==='trump') sc += 80;
+          // 有机会出主牌时积极一点
+          if(cand.category==='trump') sc += 20;
+        }
+        // 分牌不够但剩余分牌多时，要积极抢分
+        const needed = (state.bid||0) - state.defenderPoints;
+        if(needed > 0 && remainingPoints() <= needed + 15 && wins) sc += 15;
       }
     }
     if(sc>bestScore){ bestScore=sc; best=cand; }
