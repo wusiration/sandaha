@@ -136,6 +136,10 @@
   }
   button:hover { background: #fff176; }
   button:disabled { background: #9e9e9e; color: #eee; cursor: not-allowed; }
+  select {
+    padding: 7px 10px; border-radius: 6px; border: none; background: #ffeb3b; color: #333;
+    font-weight: bold; font-size: 14px; cursor: pointer;
+  }
   .panel {
     display: none; background: rgba(0,0,0,0.6); padding: 10px 14px; border-radius: 8px;
     align-items: center; gap: 8px;
@@ -333,6 +337,11 @@
     <button id="btn-next" style="display:none;">下一局</button>
     <button id="btn-reset">重置战绩</button>
     <button id="btn-counter">记牌器</button>
+    <select id="difficulty-select">
+      <option value="easy">简单</option>
+      <option value="medium" selected>普通</option>
+      <option value="hard">困难</option>
+    </select>
     <div class="panel" id="bid-panel">
       <span>叫分：</span>
       <span id="bid-options"></span>
@@ -790,7 +799,8 @@ const els = {
   cntTotal: document.getElementById('cnt-total'),
   cntTrump: document.getElementById('cnt-trump'),
   cntBody: document.getElementById('cnt-body'),
-  btnCounter: document.getElementById('btn-counter')
+  btnCounter: document.getElementById('btn-counter'),
+  difficultySelect: document.getElementById('difficulty-select')
 };
 function log(msg){ const d=document.createElement('div'); d.textContent=msg; els.log.appendChild(d); els.log.scrollTop=els.log.scrollHeight; }
 function showMessage(msg){ els.message.textContent=msg; }
@@ -1047,7 +1057,8 @@ function initState(){
     selected:[], auctionPassed:[false,false,false,false], consecutivePasses:0, lastBidTurn:null,
     memory: initMemory(),
     roundNumber:1, roundHistory: [],
-    stats: { dealerWins:0, defenderWins:0, totalDefenderPoints:0, totalBid:0 }
+    stats: { dealerWins:0, defenderWins:0, totalDefenderPoints:0, totalBid:0 },
+    difficulty: 'medium'
   };
 }
 
@@ -1224,6 +1235,9 @@ function evaluateBidStrength(hand){
   return strength;
 }
 
+function getDifficulty(){ return state.difficulty || 'medium'; }
+function isEasyAI(){ return getDifficulty()==='easy'; }
+function isHardAI(){ return getDifficulty()==='hard'; }
 function handStrengthRating(strength){
   if(strength>=18) return {label:'极强', bid:55};
   if(strength>=14) return {label:'强', bid:60};
@@ -1236,7 +1250,10 @@ function handStrengthRating(strength){
 function aiBid(idx){
   const p = state.players[idx];
   const hand = p.hand;
-  const strength = evaluateBidStrength(hand);
+  let strength = evaluateBidStrength(hand);
+  // 难度调整
+  if(isEasyAI()) strength *= 0.85;
+  else if(isHardAI()) strength *= 1.1;
   p.bidRating = handStrengthRating(strength);
   // 牌力 -> 最低愿意坐庄的分数
   let targetBid;
@@ -1246,6 +1263,8 @@ function aiBid(idx){
   else if(strength>=6) targetBid = 70;
   else if(strength>=4) targetBid = 75;
   else { commitBid(idx, null); return; } // 弱牌直接不叫
+  // 简单难度偶尔放弃竞争，困难难度更坚持
+  if(isEasyAI() && Math.random()<0.15 && strength<12){ commitBid(idx, null); return; }
   const current = state.bid==null ? 85 : state.bid; // 85 是为了让首家能叫出80
   // 当前分数已经小于等于我们能接受的目标，不再压分
   if(current <= targetBid){
@@ -1344,6 +1363,29 @@ function chooseTrumpHuman(){
     };
   }
 }
+function getStructuralCards(hand){
+  // 返回手牌中属于对子/拖拉机结构的牌，这些牌应尽量保留
+  const structural = new Set();
+  for(const s of SUIT_KEYS){
+    const groups = groupPlainByRank(hand, s, null);
+    const ordered = orderedRanksPlain();
+    const pairs = getPairs(groups, ordered);
+    for(const k of pairs){
+      const cs = hand.filter(c=>c.suit===s && c.rank===k && !isTrump(c,null));
+      cs.forEach(c=>structural.add(c));
+    }
+  }
+  // 常主对子
+  const trumpGroups = groupTrumpBySuitRank(hand, null);
+  const trumpOrdered = orderedTrumpSuitRanks(null).map(makeSuitRankKey);
+  const trumpPairs = getPairs(trumpGroups, trumpOrdered);
+  for(const k of trumpPairs){
+    const [s,r]=k.split('_');
+    const cs = hand.filter(c=>c.suit===s && c.rank===r && isTrump(c,null));
+    cs.forEach(c=>structural.add(c));
+  }
+  return structural;
+}
 function aiExchangeAndTrump(){
   const p=state.players[state.dealerIndex];
   const hand=p.hand;
@@ -1362,10 +1404,16 @@ function aiExchangeAndTrump(){
       toBury.push(...su.cards);
     }
   }
-  // 2. 剩余坑位用 keep value 最低的牌补齐
+  // 2. 剩余坑位用 keep value 最低的牌补齐，优先埋非结构牌
   if(toBury.length < 8){
     const remaining = hand.filter(c => !toBury.includes(c));
-    remaining.sort((a,b) => dealerKeepValue(a,state.dealerIndex) - dealerKeepValue(b,state.dealerIndex));
+    const structural = getStructuralCards(hand);
+    remaining.sort((a,b)=>{
+      const aStruct = structural.has(a)?1:0;
+      const bStruct = structural.has(b)?1:0;
+      if(aStruct!==bStruct) return aStruct - bStruct;
+      return dealerKeepValue(a,state.dealerIndex) - dealerKeepValue(b,state.dealerIndex);
+    });
     const need = 8 - toBury.length;
     toBury.push(...remaining.slice(0, need));
   }
@@ -1813,6 +1861,13 @@ function aiChooseLead(idx){
       // 甩牌：已通过最大性验证，奖励高分
       sc += 100 + cand.cards.length*5;
       if(role==='dealer') sc += 20;
+      // 拖拉机甩牌更强
+      if(cand.units && cand.units.some(u=>u.type==='tractor')) sc += 30;
+      // 对手主牌少时，甩牌收益更高
+      if(!isEasyAI() && remainingTrumpCount() < 8) sc += 15;
+      // 若自己主牌也不多了，甩牌可以一次性清空，减少风险
+      const myTrumpCount = trumpCards(hand, state.trumpSuit).length;
+      if(cand.cards.length >= myTrumpCount * 0.7) sc += 10;
     } else if(role==='dealer'){
       if(cat==='trump'){
         sc += 50 + max*0.2 + (type==='tractor'?20:0) + (type==='pair'?10:0);
@@ -1829,11 +1884,13 @@ function aiChooseLead(idx){
         else if(type==='pair') sc += 15;
         else if(type==='single' && isHigh) sc += 12;
         // 记牌：对手都缺门时，这门副牌基本稳拿，奖励
-        if(allOpponentsVoid(idx, cat)) sc += 20;
+        if(!isEasyAI() && allOpponentsVoid(idx, cat)) sc += (isHardAI()?30:20);
         // 若外面还有更大牌，出小牌会被压，惩罚低牌单张
-        const higher = remainingHigherCards(cand.cards[0]);
-        if(higher > 0) sc -= higher * 4;
-        else if(type==='single' && isHigh) sc += 8; // 当前最大，可放心出
+        if(!isEasyAI()){
+          const higher = remainingHigherCards(cand.cards[0]);
+          if(higher > 0) sc -= higher * (isHardAI()?6:4);
+          else if(type==='single' && isHigh) sc += (isHardAI()?12:8); // 当前最大，可放心出
+        }
       }
     } else {
       // defender: try capture points or draw trumps
@@ -1849,36 +1906,37 @@ function aiChooseLead(idx){
         else if(type==='pair') sc += 12;
         else if(type==='single' && max>=93) sc += 10;
         // 记牌：庄家已缺门，这门大牌更容易拿到
-        if(isVoid(state.dealerIndex, cat)) sc += 15;
+        if(!isEasyAI() && isVoid(state.dealerIndex, cat)) sc += (isHardAI()?22:15);
         // 同伴已缺门，则这门牌可能要靠我收，优先出
         const pi = partnerIndex(idx);
-        if(pi!=null && isVoid(pi, cat)) sc += 10;
+        if(!isEasyAI() && pi!=null && isVoid(pi, cat)) sc += (isHardAI()?15:10);
         // 若自己就是当前这门剩余最大，奖励
-        if(cand.cards.every(c=>isHighestRemainingCard(c))) sc += 12;
+        if(!isEasyAI() && cand.cards.every(c=>isHighestRemainingCard(c))) sc += (isHardAI()?18:12);
       }
     }
     // avoid leading low singletons unless no choice
     if(type==='single' && max < 80) sc -= 15;
     // 终局调整
     if(isEndgame()){
+      const mult = isEasyAI()?0.5:(isHardAI()?1.5:1);
       const rem = remainingTricks();
       if(role==='dealer'){
         // 庄家最后一轮优先出主牌大牌保底
-        if(isLastTrick() && cat==='trump') sc += 30 + max*0.2;
+        if(isLastTrick() && cat==='trump') sc += (30 + max*0.2) * mult;
         // 避免在最后一轮出副牌让对手抠底
-        if(isLastTrick() && cat!=='trump' && !allOpponentsVoid(idx, cat)) sc -= 40;
+        if(isLastTrick() && cat!=='trump' && !allOpponentsVoid(idx, cat)) sc -= 40 * mult;
         // 剩余主牌不多时，出主逼牌价值降低
-        if(cat==='trump' && remainingTrumpCount() <= rem) sc -= 10;
+        if(cat==='trump' && remainingTrumpCount() <= rem) sc -= 10 * mult;
       } else {
         // 闲家最后一轮积极出主牌争取抠底
         if(isLastTrick() && cat==='trump'){
-          sc += 35;
-          if(type==='pair' || type==='tractor') sc += 25;
+          sc += 35 * mult;
+          if(type==='pair' || type==='tractor') sc += 25 * mult;
         }
         // 剩余分牌还很多但轮次不够时，要积极抢分
         const needed = (state.bid||0) - state.defenderPoints;
         if(needed > 0 && remainingPoints() <= needed + 10 && cat!=='trump'){
-          sc += (max>=93 ? 15 : 8);
+          sc += (max>=93 ? 15 : 8) * mult;
         }
       }
     }
@@ -2003,21 +2061,21 @@ function aiChooseFollow(idx, lead){
       sc -= cand.maxRank * 0.5;
       // 队友明显大（最后一家或持有当前最大剩余牌）时，放心送分
       const partnerPlay = winner;
-      const clearlyWinning = isLastPlayer || partnerPlay.cards.some(c=>isHighestRemainingCard(c));
+      const clearlyWinning = isLastPlayer || (!isEasyAI() && partnerPlay.cards.some(c=>isHighestRemainingCard(c)));
       if(candPoints > 0){
-        const bonus = clearlyWinning ? 6 : 3;
+        const bonus = clearlyWinning ? (isHardAI()?8:6) : (isHardAI()?4:3);
         sc += candPoints * bonus;
       }
-      if(cand.category==='discard') sc += 10;
+      if(cand.category==='discard') sc += (isHardAI()?15:10);
       // 同门跟牌时送分额外奖励
-      if(clearlyWinning && cand.category===leadCat && candPoints>0) sc += candPoints * 2;
+      if(clearlyWinning && cand.category===leadCat && candPoints>0) sc += candPoints * (isHardAI()?3:2);
     } else {
       // 对手在赢墩：尽量赢，否则少送分
       if(wins){
         // 闲家配合：避免两个闲家连续浪费主牌
         const partner = partnerIndex(idx);
         const partnerPlayedTrump = partner!=null && state.currentTrick.some(p=>p.playerIndex===partner && p.category==='trump');
-        if(role==='defender' && partnerPlayedTrump && !isLastPlayer) sc -= 25;
+        if(!isEasyAI() && role==='defender' && partnerPlayedTrump && !isLastPlayer) sc -= (isHardAI()?35:25);
         sc += 200 + (isLastPlayer?50:0) + candPoints * 2;
         sc -= cand.maxRank * 0.4;
         // 用主牌对子/拖拉机赢比较贵，稍微扣分
@@ -2025,13 +2083,13 @@ function aiChooseFollow(idx, lead){
       } else {
         sc -= cand.maxRank * 0.3;
         // 避免把分牌垫给对手
-        if(candPoints > 0) sc -= candPoints * 5;
+        if(candPoints > 0) sc -= candPoints * (isHardAI()?7:5);
         // 若自己是最后一家且已无法赢，优先出最低牌
         if(isLastPlayer) sc -= 5;
         // 闲家：如果同伴还没出过牌，自己又不是最后一家，尽量让同伴先消耗主牌
         const partner = partnerIndex(idx);
         const partnerPlayed = partner!=null && state.currentTrick.some(p=>p.playerIndex===partner);
-        if(role==='defender' && !isLastPlayer && !partnerPlayed && cand.category==='trump') sc -= 20;
+        if(!isEasyAI() && role==='defender' && !isLastPlayer && !partnerPlayed && cand.category==='trump') sc -= (isHardAI()?25:20);
       }
     }
     // 终局强化
@@ -2055,6 +2113,8 @@ function aiChooseFollow(idx, lead){
         if(needed > 0 && remainingPoints() <= needed + 15 && wins) sc += 15;
       }
     }
+    // 简单难度增加随机性，偶尔做出次优选择
+    if(isEasyAI()) sc += (Math.random()-0.5) * 40;
     if(sc>bestScore){ bestScore=sc; best=cand; }
   }
   return best || {cards:hand.slice(0,len), category:'discard'};
@@ -2394,10 +2454,12 @@ function startNewRound(preserveStats=true){
   const oldHistory = preserveStats ? state.roundHistory : [];
   const oldStats = preserveStats ? state.stats : {dealerWins:0, defenderWins:0, totalDefenderPoints:0, totalBid:0};
   const oldRoundNumber = preserveStats ? state.roundNumber + 1 : 1;
+  const oldDifficulty = state.difficulty || 'medium';
   state = initState();
   state.roundHistory = oldHistory;
   state.stats = oldStats;
   state.roundNumber = oldRoundNumber;
+  state.difficulty = oldDifficulty;
   state.startBidder = randInt(4);
   state.turn = state.startBidder;
   if(els.scoreboardPanel) els.scoreboardPanel.classList.remove('active');
@@ -2447,6 +2509,13 @@ if(els.btnCounter){
 document.getElementById('controls').addEventListener('click', (e)=>{
   if(e.target.tagName==='BUTTON') playSound('click');
 });
+if(els.difficultySelect){
+  els.difficultySelect.value = state.difficulty || 'medium';
+  els.difficultySelect.onchange = ()=>{
+    state.difficulty = els.difficultySelect.value;
+    showMessage('AI 难度已设置为：'+(state.difficulty==='easy'?'简单':state.difficulty==='hard'?'困难':'普通'));
+  };
+}
 
 // initial render
 state = initState();
