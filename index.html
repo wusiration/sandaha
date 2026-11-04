@@ -19,22 +19,30 @@
   body {
     margin: 0; padding: 0;
     font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
-    background: radial-gradient(circle at center, #2e7d32 0%, #1b5e20 60%, #0d3b10 100%);
+    background: radial-gradient(ellipse at center, #2e7d32 0%, #1b5e20 45%, #0d3b10 100%);
     color: #fff;
     overflow: hidden;
     user-select: none;
+  }
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background-image: radial-gradient(circle at 20% 80%, rgba(255,255,255,0.03) 0%, transparent 50%),
+                      radial-gradient(circle at 80% 20%, rgba(255,255,255,0.03) 0%, transparent 50%);
+    pointer-events: none;
   }
   #app {
     display: flex; flex-direction: column; height: 100vh;
   }
   #header {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 8px 16px; background: rgba(0,0,0,0.25);
+    padding: 10px 16px; background: rgba(0,0,0,0.35);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(255,255,255,0.1);
     font-size: 14px; flex-wrap: wrap;
   }
   #header > div { margin: 2px 8px; }
-  #header .label { opacity: 0.8; margin-right: 4px; }
-  #header .value { font-weight: bold; color: #ffeb3b; }
+  #header .label { opacity: 0.7; margin-right: 4px; }
+  #header .value { font-weight: bold; color: #ffd54f; text-shadow: 0 1px 2px rgba(0,0,0,0.5); }
   #table {
     flex: 1; position: relative; min-height: 0;
   }
@@ -42,45 +50,54 @@
     position: absolute; display: flex; flex-direction: column; align-items: center;
     width: 160px;
   }
-  .seat-top { top: 10px; left: 50%; transform: translateX(-50%); }
-  .seat-left { left: 10px; top: 50%; transform: translateY(-50%); }
-  .seat-right { right: 10px; top: 50%; transform: translateY(-50%); }
-  .seat-bottom { bottom: 10px; left: 50%; transform: translateX(-50%); width: 95%; max-width: 960px; }
+  .seat-top { top: 12px; left: 50%; transform: translateX(-50%); }
+  .seat-left { left: 12px; top: 50%; transform: translateY(-50%); }
+  .seat-right { right: 12px; top: 50%; transform: translateY(-50%); }
+  .seat-bottom { bottom: 12px; left: 50%; transform: translateX(-50%); width: 95%; max-width: 960px; }
   .player-info {
-    background: rgba(0,0,0,0.35); padding: 6px 10px; border-radius: 8px;
-    text-align: center; margin-bottom: 6px; min-width: 120px;
+    background: rgba(255,255,255,0.12); padding: 8px 14px; border-radius: 12px;
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.15);
+    text-align: center; margin-bottom: 8px; min-width: 120px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
   }
-  .player-info .name { font-weight: bold; font-size: 15px; }
-  .player-info .meta { font-size: 12px; opacity: 0.85; margin-top: 2px; }
-  .player-info.dealer .name { color: #ff9800; }
-  .player-info.turn { box-shadow: 0 0 0 2px #ffeb3b; }
+  .player-info .name { font-weight: bold; font-size: 15px; letter-spacing: 0.5px; }
+  .player-info .meta { font-size: 12px; opacity: 0.8; margin-top: 2px; }
+  .player-info.dealer { border-color: rgba(255,152,0,0.6); background: rgba(255,152,0,0.12); }
+  .player-info.dealer .name { color: #ffb74d; }
+  .player-info.turn { box-shadow: 0 0 0 2px #ffd54f, 0 0 20px rgba(255,213,79,0.3); }
   .hand {
     display: flex; justify-content: center; flex-wrap: wrap;
-    gap: 2px; min-height: 70px;
+    gap: 3px; min-height: 72px;
   }
   .card {
-    width: 48px; height: 68px; background: linear-gradient(135deg,#fff 0%,#f2f2f2 100%); border-radius: 6px;
-    color: #1a1a1a; position: relative; cursor: pointer;
-    box-shadow: 0 3px 6px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(0,0,0,0.06);
-    border: 1px solid #999; transition: transform .12s, box-shadow .12s;
+    width: 50px; height: 72px; background: linear-gradient(145deg,#fff 0%,#f5f5f5 50%,#e0e0e0 100%);
+    border-radius: 8px; color: #1a1a1a; position: relative; cursor: pointer;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.8), inset 0 -1px 0 rgba(0,0,0,0.1);
+    border: 1px solid #bdbdbd; transition: transform .15s, box-shadow .15s;
     overflow: hidden; flex-shrink: 0;
   }
-  .card.red { color: #c62828; }
+  .card:hover { transform: translateY(-4px); box-shadow: 0 8px 16px rgba(0,0,0,0.4); }
+  .card.red { color: #d32f2f; }
   .card.black { color: #212121; }
   .card.back {
-    background: repeating-linear-gradient(45deg,#0d47a1,#0d47a1 6px,#1565c0 6px,#1565c0 12px);
-    border: 1px solid #0a357a; cursor: default;
+    background: repeating-linear-gradient(45deg,#1565c0,#1565c0 8px,#1976d2 8px,#1976d2 16px);
+    border: 1px solid #0d47a1; cursor: default;
   }
   .card.back::after {
-    content: ''; position: absolute; inset: 4px; border: 2px solid rgba(255,255,255,0.25); border-radius: 4px;
+    content: ''; position: absolute; inset: 5px; border: 2px solid rgba(255,255,255,0.3); border-radius: 5px;
   }
-  .card.selected { transform: translateY(-14px); box-shadow: 0 8px 18px rgba(255,235,59,0.45); border-color: #ffeb3b; }
+  .card.selected {
+    transform: translateY(-16px);
+    box-shadow: 0 12px 24px rgba(255,213,79,0.4), 0 0 0 2px #ffd54f;
+    border-color: #ffd54f;
+  }
   .card .corner { position: absolute; display: flex; flex-direction: column; align-items: center; line-height: 1; font-weight: 900; }
-  .card .corner.top-left { top: 3px; left: 3px; }
-  .card .corner.bottom-right { bottom: 3px; right: 3px; transform: rotate(180deg); }
-  .card .corner .crank { font-size: 12px; }
-  .card .corner .csuit { font-size: 11px; margin-top: 1px; }
-  .card .center-suit { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); font-size: 26px; opacity: 0.92; }
+  .card .corner.top-left { top: 4px; left: 4px; }
+  .card .corner.bottom-right { bottom: 4px; right: 4px; transform: rotate(180deg); }
+  .card .corner .crank { font-size: 13px; }
+  .card .corner .csuit { font-size: 12px; margin-top: 1px; }
+  .card .center-suit { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); font-size: 30px; opacity: 0.2; }
   .card .joker-center { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); font-size: 16px; font-weight: 900; text-align: center; line-height: 1.15; }
   .trick-play {
     position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
@@ -88,105 +105,144 @@
     z-index: 10; min-width: 80px;
   }
   .trick-play .trick-player {
-    font-size: 12px; font-weight: bold; color: #ffeb3b;
+    font-size: 13px; font-weight: bold; color: #ffd54f;
     text-shadow: 0 1px 3px rgba(0,0,0,0.9);
-    margin-bottom: 5px;
-    background: rgba(0,0,0,0.55); padding: 2px 10px; border-radius: 10px;
+    margin-bottom: 6px;
+    background: rgba(0,0,0,0.6); padding: 3px 12px; border-radius: 12px;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     white-space: nowrap;
+    border: 1px solid rgba(255,255,255,0.15);
   }
   .trick-play .trick-cards {
     display: flex; justify-content: center; align-items: center;
   }
   .trick-play .card {
-    width: 52px; height: 74px;
-    box-shadow: 0 3px 8px rgba(0,0,0,0.5);
+    width: 54px; height: 78px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
   }
-  .trick-play .card:nth-child(n+2) { margin-left: -14px; }
+  .trick-play .card:nth-child(n+2) { margin-left: -16px; }
   .trick-play .card .corner .crank { font-size: 14px; }
   .trick-play .card .corner .csuit { font-size: 13px; }
-  .trick-play .card .center-suit { font-size: 26px; }
-  .trick-play .card .joker-center { font-size: 14px; }
+  .trick-play .card .center-suit { font-size: 28px; }
+  .trick-play .card .joker-center { font-size: 15px; }
   .trick-play.winner .card {
-    box-shadow: 0 0 0 2px #ffeb3b, 0 3px 8px rgba(0,0,0,0.55);
+    box-shadow: 0 0 0 3px #ffd54f, 0 4px 12px rgba(255,213,79,0.4);
   }
-  .trick-play.winner .trick-player { color: #ff9800; }
+  .trick-play.winner .trick-player { color: #ffb74d; border-color: rgba(255,183,77,0.5); }
   #center {
     position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
     text-align: center; z-index: 5;
   }
   #trick-area {
-    width: 420px; height: 320px; position: relative;
-    background: rgba(0,0,0,0.15); border-radius: 12px;
+    width: 440px; height: 340px; position: relative;
+    background: rgba(0,0,0,0.2); border-radius: 20px;
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: inset 0 2px 10px rgba(0,0,0,0.2);
   }
   #message {
-    margin-top: 8px; font-size: 15px; min-height: 22px; color: #ffeb3b;
+    position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%);
+    font-size: 16px; min-height: 24px; color: #ffd54f;
+    font-weight: bold; text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+    background: rgba(0,0,0,0.4); padding: 4px 16px; border-radius: 20px;
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    white-space: nowrap;
   }
   #controls {
-    display: flex; justify-content: center; align-items: center; gap: 8px;
-    padding: 10px; background: rgba(0,0,0,0.25); min-height: 60px;
+    display: flex; justify-content: center; align-items: center; gap: 10px;
+    padding: 12px; background: rgba(0,0,0,0.35);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    border-top: 1px solid rgba(255,255,255,0.1);
+    min-height: 64px;
   }
   button, .card {
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
   }
   button {
-    padding: 8px 16px; border: none; border-radius: 6px;
-    background: #ffeb3b; color: #333; font-weight: bold; cursor: pointer;
-    font-size: 14px;
+    padding: 10px 18px; border: none; border-radius: 10px;
+    background: linear-gradient(135deg,#ffd54f 0%,#ffb300 100%);
+    color: #333; font-weight: bold; cursor: pointer;
+    font-size: 14px; letter-spacing: 0.5px;
+    box-shadow: 0 4px 10px rgba(255,179,0,0.3), inset 0 1px 0 rgba(255,255,255,0.5);
+    transition: transform .12s, box-shadow .12s;
   }
-  button:hover { background: #fff176; }
-  button:disabled { background: #9e9e9e; color: #eee; cursor: not-allowed; }
+  button:hover {
+    background: linear-gradient(135deg,#ffe082 0%,#ffc107 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 14px rgba(255,179,0,0.4);
+  }
+  button:active { transform: translateY(0); }
+  button:disabled {
+    background: #9e9e9e; color: #eee; cursor: not-allowed;
+    box-shadow: none;
+  }
   select {
-    padding: 7px 10px; border-radius: 6px; border: none; background: #ffeb3b; color: #333;
-    font-weight: bold; font-size: 14px; cursor: pointer;
+    padding: 9px 12px; border-radius: 10px; border: none;
+    background: linear-gradient(135deg,#ffd54f 0%,#ffb300 100%);
+    color: #333; font-weight: bold; font-size: 14px; cursor: pointer;
+    box-shadow: 0 4px 10px rgba(255,179,0,0.3);
   }
   .panel {
-    display: none; background: rgba(0,0,0,0.6); padding: 10px 14px; border-radius: 8px;
+    display: none; background: rgba(255,255,255,0.12);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    padding: 10px 16px; border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.15);
     align-items: center; gap: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
   }
   .panel.active { display: flex; }
-  .bid-btn { min-width: 46px; }
+  .bid-btn { min-width: 48px; }
   #log {
-    position: absolute; left: 10px; bottom: 10px; width: 240px; max-height: 160px;
-    overflow-y: auto; background: rgba(0,0,0,0.45); border-radius: 6px; padding: 6px;
-    font-size: 12px; line-height: 1.4;
+    position: absolute; left: 12px; bottom: 12px; width: 260px; max-height: 180px;
+    overflow-y: auto; background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    border-radius: 10px; padding: 8px;
+    font-size: 12px; line-height: 1.5;
+    border: 1px solid rgba(255,255,255,0.08);
   }
-  #log div { margin-bottom: 2px; }
+  #log div { margin-bottom: 3px; opacity: 0.9; }
   #bottom-panel {
     display: none; position: absolute; left: 50%; top: 18%; transform: translateX(-50%);
-    background: rgba(0,0,0,0.7); padding: 10px; border-radius: 10px; text-align: center; z-index: 20;
+    background: rgba(255,255,255,0.12); padding: 14px 20px; border-radius: 16px; text-align: center; z-index: 20;
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255,255,255,0.15);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
   }
   #bottom-panel.active { display: block; }
   #scoreboard-panel {
     display: none; position: absolute; left: 50%; top: 12%; transform: translateX(-50%);
-    background: rgba(0,0,0,0.82); padding: 14px 18px; border-radius: 10px; z-index: 25;
-    min-width: 320px; max-width: 90vw; max-height: 70vh; overflow-y: auto;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    background: rgba(255,255,255,0.12); padding: 18px 22px; border-radius: 16px; z-index: 25;
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255,255,255,0.15);
+    min-width: 340px; max-width: 90vw; max-height: 70vh; overflow-y: auto;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.5);
   }
   #scoreboard-panel.active { display: block; }
-  #scoreboard-panel .sb-title { font-size: 16px; font-weight: bold; color: #ffeb3b; margin-bottom: 10px; text-align: center; }
-  #scoreboard-panel .sb-stats { display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; font-size: 13px; margin-bottom: 12px; }
-  #scoreboard-panel .sb-stats b { color: #ffeb3b; margin-left: 2px; }
+  #scoreboard-panel .sb-title { font-size: 18px; font-weight: bold; color: #ffd54f; margin-bottom: 12px; text-align: center; text-shadow: 0 1px 3px rgba(0,0,0,0.5); }
+  #scoreboard-panel .sb-stats { display: flex; justify-content: center; flex-wrap: wrap; gap: 14px; font-size: 13px; margin-bottom: 14px; }
+  #scoreboard-panel .sb-stats b { color: #ffd54f; margin-left: 2px; }
   #scoreboard-panel table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  #scoreboard-panel th, #scoreboard-panel td { padding: 5px 8px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.15); }
-  #scoreboard-panel th { color: #ffeb3b; background: rgba(255,255,255,0.08); }
-  #scoreboard-panel .sb-buttons { display: flex; justify-content: center; gap: 10px; margin-top: 12px; }
-  #scoreboard-panel tr.dealer-win td:last-child { color: #ff9800; font-weight: bold; }
+  #scoreboard-panel th, #scoreboard-panel td { padding: 6px 10px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.12); }
+  #scoreboard-panel th { color: #ffd54f; background: rgba(255,255,255,0.08); }
+  #scoreboard-panel .sb-buttons { display: flex; justify-content: center; gap: 12px; margin-top: 14px; }
+  #scoreboard-panel tr.dealer-win td:last-child { color: #ffb74d; font-weight: bold; }
   #scoreboard-panel tr.defender-win td:last-child { color: #81c784; font-weight: bold; }
   #counter-panel {
     display: none; position: absolute; left: 50%; top: 12%; transform: translateX(-50%);
-    background: rgba(0,0,0,0.82); padding: 14px 18px; border-radius: 10px; z-index: 25;
-    min-width: 280px; max-width: 90vw;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    background: rgba(255,255,255,0.12); padding: 16px 20px; border-radius: 16px; z-index: 25;
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255,255,255,0.15);
+    min-width: 300px; max-width: 90vw;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.5);
   }
   #counter-panel.active { display: block; }
-  #counter-panel .counter-summary { display: flex; justify-content: center; gap: 16px; font-size: 13px; margin-bottom: 10px; }
-  #counter-panel .counter-summary b { color: #ffeb3b; margin-left: 2px; }
+  #counter-panel .counter-summary { display: flex; justify-content: center; gap: 18px; font-size: 13px; margin-bottom: 12px; }
+  #counter-panel .counter-summary b { color: #ffd54f; margin-left: 2px; }
   #counter-panel table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  #counter-panel th, #counter-panel td { padding: 5px 8px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.15); }
-  #counter-panel th { color: #ffeb3b; background: rgba(255,255,255,0.08); }
-  #counter-panel .counter-note { font-size: 11px; opacity: 0.7; text-align: center; margin-top: 8px; }
-  .small-cards { display: flex; justify-content: center; gap: 3px; margin: 6px 0; }
+  #counter-panel th, #counter-panel td { padding: 6px 10px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.12); }
+  #counter-panel th { color: #ffd54f; background: rgba(255,255,255,0.08); }
+  #counter-panel .counter-note { font-size: 11px; opacity: 0.6; text-align: center; margin-top: 10px; }
+  .small-cards { display: flex; justify-content: center; gap: 4px; margin: 8px 0; }
 
   /* animations */
   @keyframes cardDealIn {
@@ -289,8 +345,8 @@
 
     <div id="center">
       <div id="trick-area"></div>
-      <div id="message">点击“新游戏”开始</div>
     </div>
+    <div id="message">点击“新游戏”开始</div>
 
     <div id="bottom-panel">
       <div>底牌（点击选择要留下的底牌）</div>
@@ -1029,6 +1085,15 @@ function partnerStrongInSuit(idx, suit){
   }
   return false;
 }
+function opponentSuitRemaining(idx, suit){
+  // 估算对手在某门副牌上还剩下多少张
+  let remaining = 0;
+  for(const c of state.deck){
+    if(c.suit===suit && !isTrump(c,state.trumpSuit) && !state.memory.playedCards.has(c.id)) remaining++;
+  }
+  const mine = state.players[idx].hand.filter(c=>c.suit===suit && !isTrump(c,state.trumpSuit)).length;
+  return Math.max(0, remaining - mine);
+}
 function partnerHasPlayedHighInTrick(){
   // 当前轮中同伴是否已出强牌
   const lead = state.currentTrick[0];
@@ -1165,11 +1230,13 @@ function evaluateBidStrength(hand){
   }
   // 主牌太少会失控，大幅扣分
   if(trumpCount < 4) strength -= (4-trumpCount) * 1.5;
-  // 2. 最佳副牌花色（将来可能选为主）：长套+大牌价值更高
+  // 2. 最佳副牌花色（将来可能选为主）：长套+大牌+对子结构综合评估
   let bestSuitStrength=0;
+  let maxSuitLength=0;
   for(const s of SUIT_KEYS){
     const suitCards = suitPlainCards(hand,s,null);
     if(suitCards.length===0) continue;
+    maxSuitLength = Math.max(maxSuitLength, suitCards.length);
     let suitValue=0;
     for(const c of suitCards){
       const rv = plainRankValue(c);
@@ -1180,10 +1247,18 @@ function evaluateBidStrength(hand){
       else if(rv>=90) suitValue += 0.1; // 10
     }
     // 长度奖励：超过3张后每张额外加分，容易形成主牌拖拉机
-    suitValue += Math.max(0, suitCards.length-3) * 0.3;
+    suitValue += Math.max(0, suitCards.length-3) * 0.4;
+    // 长套对子额外加分（该花色将来很可能成为主）
+    const groups = groupPlainByRank(hand, s, null);
+    const pairs = getPairs(groups, orderedRanksPlain());
+    const tractors = getTractors(groups, orderedRanksPlain());
+    suitValue += pairs.length * 0.6;
+    suitValue += tractors.reduce((sum,t)=>sum+t.length*0.8,0);
     if(suitValue>bestSuitStrength) bestSuitStrength = suitValue;
   }
   strength += bestSuitStrength;
+  // 如果最长花色也很短，叫分风险大
+  if(maxSuitLength < 4) strength -= 2;
   // 3. 副牌赢张：A、K 即使不当主也大概率能拿墩
   for(const s of SUIT_KEYS){
     const plainCards = suitPlainCards(hand,s,null);
@@ -1885,12 +1960,19 @@ function aiChooseLead(idx){
         else if(type==='single' && isHigh) sc += 12;
         // 记牌：对手都缺门时，这门副牌基本稳拿，奖励
         if(!isEasyAI() && allOpponentsVoid(idx, cat)) sc += (isHardAI()?30:20);
+        // 对手在该门剩余越少，出这门越安全
+        if(!isEasyAI()){
+          const oppRem = opponentSuitRemaining(idx, cat);
+          sc += Math.max(0, 12 - oppRem) * 0.8;
+        }
         // 若外面还有更大牌，出小牌会被压，惩罚低牌单张
         if(!isEasyAI()){
           const higher = remainingHigherCards(cand.cards[0]);
           if(higher > 0) sc -= higher * (isHardAI()?6:4);
           else if(type==='single' && isHigh) sc += (isHardAI()?12:8); // 当前最大，可放心出
         }
+        // 庄家优先出对子而非单张（对子更难被压）
+        if(type==='pair' && !isEasyAI()) sc += 5;
       }
     } else {
       // defender: try capture points or draw trumps
@@ -1912,6 +1994,13 @@ function aiChooseLead(idx){
         if(!isEasyAI() && pi!=null && isVoid(pi, cat)) sc += (isHardAI()?15:10);
         // 若自己就是当前这门剩余最大，奖励
         if(!isEasyAI() && cand.cards.every(c=>isHighestRemainingCard(c))) sc += (isHardAI()?18:12);
+        // 庄家在该门剩余越少，这门越值得攻击
+        if(!isEasyAI()){
+          const dealerRem = opponentSuitRemaining(state.dealerIndex, cat);
+          sc += Math.max(0, 12 - dealerRem) * 0.8;
+        }
+        // 对子优先于单张
+        if(type==='pair' && !isEasyAI()) sc += 5;
       }
     }
     // avoid leading low singletons unless no choice
@@ -2090,6 +2179,15 @@ function aiChooseFollow(idx, lead){
         const partner = partnerIndex(idx);
         const partnerPlayed = partner!=null && state.currentTrick.some(p=>p.playerIndex===partner);
         if(!isEasyAI() && role==='defender' && !isLastPlayer && !partnerPlayed && cand.category==='trump') sc -= (isHardAI()?25:20);
+        // 垫牌时优先垫对手已缺门或剩余大牌少的花色
+        if(cand.category==='discard' && !isEasyAI()){
+          const suit = cand.cards[0].suit;
+          if(SUIT_KEYS.includes(suit)){
+            if(opponentIndices(idx).some(i=>isVoid(i,suit))) sc += 8;
+            const highRem = remainingPlainHigh(suit, 92);
+            sc += Math.max(0, 4 - highRem) * 2;
+          }
+        }
       }
     }
     // 终局强化
@@ -2124,15 +2222,22 @@ function aiChooseFollowThrow(idx, lead){
   const total = lead.cards.length;
   const handTrump = trumpCards(hand, state.trumpSuit);
   const avail = handTrump.length;
+  // 判断当前赢家是否为同伴
+  let winner=null;
+  for(const p of state.currentTrick){
+    if(!winner || playBeats(p, winner.category, winner.maxRank, winner.effectiveType, lead.category)) winner=p;
+  }
+  const partnerWinning = winner && winner.playerIndex!==idx && (winner.playerIndex===state.dealerIndex)===(idx===state.dealerIndex);
+  const avoidPts = !partnerWinning;
   if(avail === 0){
-    return {cards: selectLowestDiscards(hand, [], total), category:'discard'};
+    return {cards: selectLowestDiscards(hand, [], total, avoidPts), category:'discard'};
   }
   if(avail >= total){
     // 主牌够：出最低 total 张主牌即可满足结构要求
     return {cards: lowestCards(handTrump, total), category:'trump'};
   }
   // 主牌不够：出全部主牌 + 最低副牌垫
-  const discards = selectLowestDiscards(hand, handTrump, total - avail);
+  const discards = selectLowestDiscards(hand, handTrump, total - avail, avoidPts);
   return {cards:[...handTrump, ...discards], category:'discard'};
 }
 function lowestCards(cards, n, avoidPoints=false){
