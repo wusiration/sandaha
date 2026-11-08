@@ -1107,6 +1107,61 @@ function partnerHasPlayedHighInTrick(){
 function isLastTrick(){
   return remainingTricks() === 1;
 }
+function pointsAtStake(){
+  // 当前轮可能的分值（已出牌中的分）
+  return state.currentTrick.reduce((sum,p)=>sum+p.cards.reduce((s,c)=>s+scoreValue(c),0),0);
+}
+function neededPoints(){
+  // 闲家还需要多少分才能赢
+  return Math.max(0, (state.bid||0) - state.defenderPoints);
+}
+function dealerSafeMargin(){
+  // 庄家安全垫：还能让闲家得多少分而不输
+  return Math.max(0, (state.bid||0) - 1 - state.defenderPoints);
+}
+function shouldContestTrick(idx, wins, cost, points){
+  // 是否值得抢这一墩：考虑分值、成本、局势
+  const role = idx===state.dealerIndex?'dealer':'defender';
+  if(role==='defender'){
+    // 闲家：能赢就尽量赢，尤其当这墩有分或能阻止庄家控场
+    if(wins) return true;
+    return false;
+  } else {
+    // 庄家：如果这墩分多且安全垫不够，必须赢
+    if(points > 0 && points > dealerSafeMargin()) return true;
+    // 如果这墩没分且安全垫够，可以让
+    if(points === 0 && dealerSafeMargin() > 20) return false;
+    // 能赢就赢
+    return wins;
+  }
+}
+function trumpCost(cards){
+  // 计算使用主牌的成本（王/7/2 成本最高）
+  return cards.reduce((sum,c)=>{
+    if(!isTrump(c,state.trumpSuit)) return sum;
+    if(c.rank==='BJ') return sum+10;
+    if(c.rank==='SJ') return sum+8;
+    if(c.rank==='7') return sum+5;
+    if(c.rank==='2') return sum+3;
+    return sum+1;
+  },0);
+}
+function bestDiscardSuit(idx, len){
+  // 选择最适合垫牌的花色：无分、对手缺门、剩余大牌少
+  let best=null, bestScore=-9999;
+  for(const s of SUIT_KEYS){
+    const suitCards = state.players[idx].hand.filter(c=>c.suit===s && !isTrump(c,state.trumpSuit));
+    if(suitCards.length < len) continue;
+    const low = lowestCards(suitCards, len, true);
+    const pts = low.reduce((sum,c)=>sum+scoreValue(c),0);
+    let sc = 0;
+    sc -= pts * 10;
+    if(opponentIndices(idx).some(i=>isVoid(i,s))) sc += 15;
+    sc += Math.max(0, 6 - remainingPlainHigh(s, 92)) * 2;
+    if(sc > bestScore){ bestScore=sc; best=low; }
+  }
+  return best;
+}
 function initState(){
   return {
     players: [
@@ -1464,14 +1519,16 @@ function getStructuralCards(hand){
 function aiExchangeAndTrump(){
   const p=state.players[state.dealerIndex];
   const hand=p.hand;
+  // 先选主，再埋底，避免把该留的主花色埋掉
+  const trump = aiChooseTrump(hand);
+  state.trumpSuit = trump;
   const toBury = [];
-  // 1. 优先整门埋掉弱势副牌花色，制造缺门（缺门对庄家很有利）
-  // 弱势：该花色没有 A/K/Q/J（max keep value < 90）
+  // 1. 优先整门埋掉弱势非主花色，制造缺门
   const weakSuits = SUIT_KEYS.map(s => {
-    const cards = hand.filter(c => c.suit===s && !isTrump(c,null));
+    const cards = hand.filter(c => c.suit===s && !isTrump(c,trump));
     const maxVal = cards.length ? Math.max(...cards.map(c=>dealerKeepValue(c,state.dealerIndex))) : -1;
     return {suit:s, cards, maxVal};
-  }).filter(su => su.cards.length>0 && su.maxVal<90);
+  }).filter(su => su.cards.length>0 && su.maxVal<90 && su.suit!==trump);
   // 短套优先埋，制造缺门
   weakSuits.sort((a,b) => a.cards.length - b.cards.length);
   for(const su of weakSuits){
@@ -1479,7 +1536,7 @@ function aiExchangeAndTrump(){
       toBury.push(...su.cards);
     }
   }
-  // 2. 剩余坑位用 keep value 最低的牌补齐，优先埋非结构牌
+  // 2. 剩余坑位用 keep value 最低的牌补齐，优先埋非结构牌且非主花色
   if(toBury.length < 8){
     const remaining = hand.filter(c => !toBury.includes(c));
     const structural = getStructuralCards(hand);
@@ -1487,6 +1544,9 @@ function aiExchangeAndTrump(){
       const aStruct = structural.has(a)?1:0;
       const bStruct = structural.has(b)?1:0;
       if(aStruct!==bStruct) return aStruct - bStruct;
+      const aTrump = isTrump(a,trump)?1:0;
+      const bTrump = isTrump(b,trump)?1:0;
+      if(aTrump!==bTrump) return aTrump - bTrump;
       return dealerKeepValue(a,state.dealerIndex) - dealerKeepValue(b,state.dealerIndex);
     });
     const need = 8 - toBury.length;
@@ -1497,8 +1557,6 @@ function aiExchangeAndTrump(){
   state.bottom = toBury;
   for(const c of oldBottom) hand.push(c);
   state.bottomScore = state.bottom.reduce((s,c)=>s+scoreValue(c),0);
-  // choose trump
-  const trump = aiChooseTrump(hand);
   finishExchangeAndTrump(trump);
 }
 function dealerKeepValue(c, dealerIdx){
@@ -1510,14 +1568,30 @@ function dealerKeepValue(c, dealerIdx){
   return pv + sv * 0.4;
 }
 function aiChooseTrump(hand){
-  let bestSuit=null, bestCount=-1;
+  let bestSuit=null, bestScore=-1;
   for(const s of SUIT_KEYS){
-    const cnt = suitPlainCards(hand,s,null).length;
-    if(cnt>bestCount){ bestCount=cnt; bestSuit=s; }
+    const cards = suitPlainCards(hand,s,null);
+    if(cards.length===0) continue;
+    let score = cards.length * 1.0;
+    // 高牌加分
+    for(const c of cards){
+      const rv = plainRankValue(c);
+      if(rv>=94) score += 1.5;      // A
+      else if(rv>=93) score += 1.0; // K
+      else if(rv>=92) score += 0.5; // Q
+    }
+    // 对子/拖拉机加分
+    const groups = groupPlainByRank(hand, s, null);
+    const ordered = orderedRanksPlain();
+    const pairs = getPairs(groups, ordered);
+    const tractors = getTractors(groups, ordered);
+    score += pairs.length * 1.2;
+    score += tractors.reduce((sum,t)=>sum+t.length*1.5,0);
+    if(score > bestScore){ bestScore=score; bestSuit=s; }
   }
   // choose no-trump if plain suits weak and many constant trumps
   const trumpCnt = trumpCards(hand,null).length;
-  if(bestCount<=2 && trumpCnt>=6) return null;
+  if(bestScore<=3 && trumpCnt>=6) return null;
   return bestSuit;
 }
 function finishExchangeAndTrump(trump){
@@ -2005,6 +2079,37 @@ function aiChooseLead(idx){
     }
     // avoid leading low singletons unless no choice
     if(type==='single' && max < 80) sc -= 15;
+    // 前期策略
+    const isEarlyGame = state.trickCount < 5;
+    if(isEarlyGame && !isEasyAI()){
+      if(role==='dealer'){
+        // 庄家主牌多时，前期出主逼牌
+        if(cat==='trump' && trumpCards(hand,state.trumpSuit).length >= 8) sc += 20;
+        // 庄家主牌少时，前期避免出主，先出副牌高牌
+        if(cat==='trump' && trumpCards(hand,state.trumpSuit).length <= 4) sc -= 15;
+      } else {
+        // 闲家前期优先出长套副牌，建立优势
+        if(cat!=='trump'){
+          const suitLen = suitPlainCards(hand, cat, state.trumpSuit).length;
+          sc += suitLen * 0.8;
+        }
+      }
+    }
+    // 分值局势调整
+    if(!isEasyAI()){
+      const needed = neededPoints();
+      if(role==='dealer'){
+        // 闲家快赢时，庄家更积极抢分/保底
+        if(needed <= 20 && cat==='trump') sc += 15;
+        // 闲家还差很多时，庄家可以更大胆出副牌
+        if(needed > 50 && cat!=='trump') sc += 8;
+      } else {
+        // 闲家快赢时，更积极出副牌抢分
+        if(needed <= 20 && cat!=='trump') sc += 12;
+        // 闲家差很多时，出主逼庄
+        if(needed > 50 && cat==='trump') sc += 12;
+      }
+    }
     // 终局调整
     if(isEndgame()){
       const mult = isEasyAI()?0.5:(isHardAI()?1.5:1);
@@ -2144,6 +2249,8 @@ function aiChooseFollow(idx, lead){
     }
     const candPoints = cand.cards.reduce((s,c)=>s+scoreValue(c),0);
     let sc=0;
+    const pointsNow = pointsAtStake();
+    const candTrumpCost = trumpCost(cand.cards);
     if(partnerWinning){
       // 同伴已在赢墩：不要压过同伴，尽量把分牌垫给同伴
       if(wins) sc -= 1000 + cand.maxRank; // 强烈避免压同伴
@@ -2159,14 +2266,17 @@ function aiChooseFollow(idx, lead){
       // 同门跟牌时送分额外奖励
       if(clearlyWinning && cand.category===leadCat && candPoints>0) sc += candPoints * (isHardAI()?3:2);
     } else {
-      // 对手在赢墩：尽量赢，否则少送分
+      // 对手在赢墩：根据分值和成本决定是否抢
+      const stakeBonus = Math.min(60, pointsNow * 4); // 分值越高越值得抢
       if(wins){
         // 闲家配合：避免两个闲家连续浪费主牌
         const partner = partnerIndex(idx);
         const partnerPlayedTrump = partner!=null && state.currentTrick.some(p=>p.playerIndex===partner && p.category==='trump');
         if(!isEasyAI() && role==='defender' && partnerPlayedTrump && !isLastPlayer) sc -= (isHardAI()?35:25);
-        sc += 200 + (isLastPlayer?50:0) + candPoints * 2;
+        sc += 200 + (isLastPlayer?50:0) + candPoints * 2 + stakeBonus;
         sc -= cand.maxRank * 0.4;
+        // 主牌经济：尽量用最低成本的主牌赢
+        sc -= candTrumpCost * 1.5;
         // 用主牌对子/拖拉机赢比较贵，稍微扣分
         if(cand.category==='trump' && cand.effectiveType!=='single') sc -= 8;
       } else {
