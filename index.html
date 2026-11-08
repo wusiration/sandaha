@@ -1391,13 +1391,13 @@ function aiBid(idx){
   if(isEasyAI()) strength *= 0.85;
   else if(isHardAI()) strength *= 1.1;
   p.bidRating = handStrengthRating(strength);
-  // 牌力 -> 最低愿意坐庄的分数
+  // 牌力 -> 最低愿意坐庄的分数（适度保守，避免过度压分）
   let targetBid;
-  if(strength>=18) targetBid = 55;
-  else if(strength>=14) targetBid = 60;
-  else if(strength>=10) targetBid = 65;
-  else if(strength>=6) targetBid = 70;
-  else if(strength>=4) targetBid = 75;
+  if(strength>=20) targetBid = 60;
+  else if(strength>=16) targetBid = 65;
+  else if(strength>=12) targetBid = 70;
+  else if(strength>=8) targetBid = 75;
+  else if(strength>=5) targetBid = 80;
   else { commitBid(idx, null); return; } // 弱牌直接不叫
   // 简单难度偶尔放弃竞争，困难难度更坚持
   if(isEasyAI() && Math.random()<0.15 && strength<12){ commitBid(idx, null); return; }
@@ -2059,6 +2059,13 @@ function aiChooseLead(idx){
         }
         // 庄家优先出对子而非单张（对子更难被压）
         if(type==='pair' && !isEasyAI()) sc += 5;
+        // 庄家防守：避免出带分副牌，除非能稳赢
+        if(!isEasyAI()){
+          const pts = cand.cards.reduce((sum,c)=>sum+scoreValue(c),0);
+          if(pts > 0 && remainingHigherCards(cand.cards[0]) > 0) sc -= pts * 3;
+          // 如果这门副牌外面已经没有更大牌，出分牌也安全
+          if(pts > 0 && remainingHigherCards(cand.cards[0]) === 0) sc += pts * 2;
+        }
       }
     } else {
       // defender: try capture points or draw trumps
@@ -2271,7 +2278,9 @@ function aiChooseFollow(idx, lead){
       const partnerPlay = winner;
       const clearlyWinning = isLastPlayer || (!isEasyAI() && partnerPlay.cards.some(c=>isHighestRemainingCard(c)));
       if(candPoints > 0){
-        const bonus = clearlyWinning ? (isHardAI()?8:6) : (isHardAI()?4:3);
+        let bonus = clearlyWinning ? (isHardAI()?8:6) : (isHardAI()?4:3);
+        // 简单/普通难度偶尔不主动送分，避免闲家配合过强
+        if(!isHardAI() && Math.random()<0.15) bonus = 0;
         sc += candPoints * bonus;
       }
       if(cand.category==='discard') sc += (isHardAI()?15:10);
@@ -2309,6 +2318,12 @@ function aiChooseFollow(idx, lead){
             const highRem = remainingPlainHigh(suit, 92);
             sc += Math.max(0, 4 - highRem) * 2;
           }
+        }
+        // 庄家防守：如果这墩没分且安全垫够，可以让给闲家
+        if(role==='dealer' && !isEasyAI()){
+          const safe = dealerSafeMargin();
+          if(pointsNow === 0 && safe > 25) sc -= 20; // 没分且安全，故意放掉
+          if(pointsNow > 0 && safe < 10) sc += 15;   // 分多且不安全，尽量抢
         }
       }
     }
