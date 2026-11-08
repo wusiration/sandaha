@@ -931,7 +931,8 @@ function updateInfo(){
   els.trumpDisplay.textContent = state.trumpSuit? SUITS[state.trumpSuit].name : (state.trumpSuit===null?'无主':'-');
   els.scoreDisplay.textContent = state.defenderPoints;
   els.bottomScoreDisplay.textContent = state.bottomScore;
-  els.trickDisplay.textContent = state.trickCount+'/'+TOTAL_TRICKS;
+  const remainingCards = state.players.reduce((sum,p)=>sum+p.hand.length,0);
+  els.trickDisplay.textContent = state.trickCount+'轮（剩'+remainingCards+'张）';
   if(els.roundNumber) els.roundNumber.textContent = state.roundNumber;
   if(els.viewBottomBtn){
     const show = state.phase!=='idle' && state.phase!=='bidding' && state.phase!=='exchange' &&
@@ -1053,7 +1054,9 @@ function remainingHigherCards(c){
   return count;
 }
 function remainingTricks(){
-  return TOTAL_TRICKS - state.trickCount;
+  // 根据剩余手牌估算剩余墩数（每墩至少消耗4张）
+  const cardsLeft = state.players.reduce((sum,p)=>sum+p.hand.length,0);
+  return Math.ceil(cardsLeft / 4);
 }
 function isEndgame(threshold=3){
   return remainingTricks() <= threshold;
@@ -1106,6 +1109,9 @@ function partnerHasPlayedHighInTrick(){
 }
 function isLastTrick(){
   return remainingTricks() === 1;
+}
+function allHandsEmpty(){
+  return state.players.every(p=>p.hand.length===0);
 }
 function pointsAtStake(){
   // 当前轮可能的分值（已出牌中的分）
@@ -1564,8 +1570,13 @@ function dealerKeepValue(c, dealerIdx){
   if(isTrump(c,null)) return 100 + trumpRankValue(c,null);
   const sv=scoreValue(c);
   const pv=plainRankValue(c);
-  // 高分牌（A/K/Q/J）即使带分也值得保留，5/10 分牌比低非分牌略贵但可埋
-  return pv + sv * 0.4;
+  // A/K 控墩价值极高，显著加权；10 分牌比低非分牌略贵但可埋
+  let highBonus = 0;
+  if(pv>=94) highBonus = 20;      // A
+  else if(pv>=93) highBonus = 14; // K
+  else if(pv>=92) highBonus = 6;  // Q
+  else if(pv>=91) highBonus = 2;  // J
+  return pv + sv * 0.4 + highBonus;
 }
 function aiChooseTrump(hand){
   let bestSuit=null, bestScore=-1;
@@ -1613,7 +1624,7 @@ function startTrick(){
   state.currentTrick=[];
   renderTrick();
   updateInfo();
-  if(state.trickCount>=TOTAL_TRICKS){ endRound(); return; }
+  if(allHandsEmpty()){ endRound(); return; }
   showMessage('第 '+(state.trickCount+1)+' 轮 · '+state.players[state.turn].name+' 出牌');
   if(state.turn===HUMAN_INDEX){ showPanel('play'); }
   else { showPanel(null); setTimeout(()=>aiLead(state.turn),700); }
@@ -1990,6 +2001,7 @@ async function aiLead(idx){
 // -------------------- AI lead --------------------
 function aiChooseLead(idx){
   const hand=state.players[idx].hand;
+  if(hand.length===0) return {cards:[]};
   const role = idx===state.dealerIndex?'dealer':'defender';
   const candidates=[];
   // trump candidates
@@ -2322,8 +2334,12 @@ function aiChooseFollow(idx, lead){
       }
     }
     // 简单难度增加随机性，偶尔做出次优选择
-    if(isEasyAI()) sc += (Math.random()-0.5) * 40;
+    if(isEasyAI()) sc += (Math.random()-0.5) * 60;
     if(sc>bestScore){ bestScore=sc; best=cand; }
+  }
+  // 简单难度偶尔选择非最优解
+  if(isEasyAI() && candidates.length>1 && Math.random()<0.2){
+    return candidates[randInt(candidates.length)];
   }
   return best || {cards:hand.slice(0,len), category:'discard'};
 }
@@ -2343,8 +2359,44 @@ function aiChooseFollowThrow(idx, lead){
     return {cards: selectLowestDiscards(hand, [], total, avoidPts), category:'discard'};
   }
   if(avail >= total){
-    // 主牌够：出最低 total 张主牌即可满足结构要求
-    return {cards: lowestCards(handTrump, total), category:'trump'};
+    // 主牌够：生成满足甩牌结构要求的候选
+    const leadUnits = lead.units || [];
+    const needTractor = leadUnits.some(u=>u.type==='tractor');
+    const needPair = leadUnits.some(u=>u.type==='pair');
+    const tractorPairCount = needTractor ? leadUnits.find(u=>u.type==='tractor').pairCount : 0;
+    const groups = groupTrumpBySuitRank(hand, state.trumpSuit);
+    const ordered = orderedTrumpSuitRanks(state.trumpSuit).map(makeSuitRankKey);
+    const pairs = getPairs(groups, ordered);
+    const tractors = getTractors(groups, ordered);
+
+    // 优先满足结构：拖拉机 > 对子
+    let cards = [];
+    if(needTractor && tractors.length>0){
+      const t = tractors.find(t=>t.length===tractorPairCount) || tractors[0];
+      for(const k of t){
+        const cs = pickCardsForGroup(hand,'trump',k,2);
+        if(cs) cards.push(...cs);
+      }
+    }
+    if(needPair && cards.length<total && pairs.length>0){
+      // 补足对子数量
+      const needPairs = leadUnits.filter(u=>u.type==='pair').length;
+      let added=0;
+      for(const pk of pairs){
+        if(cards.length>=total) break;
+        const cs = pickCardsForGroup(hand,'trump',pk,2);
+        if(cs && !cs.some(c=>cards.includes(c))){
+          cards.push(...cs);
+          added++;
+          if(added>=needPairs) break;
+        }
+      }
+    }
+    // 用最低牌补齐
+    const remaining = handTrump.filter(c=>!cards.includes(c));
+    cards.push(...lowestCards(remaining, total - cards.length, avoidPts));
+    if(cards.length===total) return {cards, category:'trump'};
+    return {cards: lowestCards(handTrump, total, avoidPts), category:'trump'};
   }
   // 主牌不够：出全部主牌 + 最低副牌垫
   const discards = selectLowestDiscards(hand, handTrump, total - avail, avoidPts);
@@ -2519,8 +2571,8 @@ async function finishTrick(){
   let bottomBonus=0;
   if(role==='闲家'){
     state.defenderPoints += points;
-    // 抠底
-    if(state.trickCount===TOTAL_TRICKS-1 && winner.category==='trump'){
+    // 抠底：本墩打完后手牌全空即为最后一墩
+    if(allHandsEmpty() && winner.category==='trump'){
       let mult=1;
       if(lead.type==='throw'){
         const hasPair = lead.units && lead.units.some(u=>u.type==='pair');
@@ -2559,7 +2611,7 @@ async function finishTrick(){
   state.trickCount++;
   renderTrick();
   state.turn=winnerIdx;
-  if(state.trickCount>=TOTAL_TRICKS){ endRound(); return; }
+  if(allHandsEmpty()){ endRound(); return; }
   startTrick();
 }
 
